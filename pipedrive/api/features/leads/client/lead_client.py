@@ -1,9 +1,15 @@
+import asyncio
 import json
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from uuid import UUID
 
 from log_config import logger
 from pipedrive.api.base_client import BaseClient
+from pipedrive.api.pipedrive_api_error import PipedriveAPIError
+
+
+CONVERT_POLL_INTERVAL_SECONDS = 1.0
+CONVERT_POLL_TIMEOUT_SECONDS = 30.0
 
 
 class LeadClient:
@@ -29,6 +35,7 @@ class LeadClient:
         label_ids: Optional[List[str]] = None,
         expected_close_date: Optional[str] = None,  # ISO format YYYY-MM-DD
         visible_to: Optional[int] = None,
+        custom_fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Create a new lead in Pipedrive
@@ -72,6 +79,16 @@ class LeadClient:
             # Value needs to be an object with amount and currency
             if amount is not None:
                 payload["value"] = {"amount": amount, "currency": currency or "USD"}
+
+            # Custom fields: Pipedrive expects API keys as top-level payload keys
+            if custom_fields:
+                for cf_key, cf_value in custom_fields.items():
+                    if cf_key in payload:
+                        logger.warning(
+                            f"LeadClient: custom_fields key '{cf_key}' overlaps with a "
+                            f"standard field; custom_fields value will overwrite."
+                        )
+                    payload[cf_key] = cf_value
 
             # Validate required fields
             if not title or not title.strip():
@@ -164,6 +181,7 @@ class LeadClient:
         was_seen: Optional[bool] = None,
         channel: Optional[int] = None,
         channel_id: Optional[str] = None,
+        custom_fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Update an existing lead in Pipedrive
@@ -228,6 +246,16 @@ class LeadClient:
                 payload["channel"] = channel
             if channel_id is not None:
                 payload["channel_id"] = channel_id
+
+            # Custom fields: Pipedrive expects API keys as top-level payload keys
+            if custom_fields:
+                for cf_key, cf_value in custom_fields.items():
+                    if cf_key in payload:
+                        logger.warning(
+                            f"LeadClient: custom_fields key '{cf_key}' overlaps with a "
+                            f"standard field; custom_fields value will overwrite."
+                        )
+                    payload[cf_key] = cf_value
 
             # Value handling - must include both amount and currency when provided
             if amount is not None:
@@ -597,3 +625,111 @@ class LeadClient:
         except Exception as e:
             logger.error(f"Error in get_lead_sources: {str(e)}")
             raise
+
+    async def convert_lead_to_deal(
+        self,
+        lead_id: str,
+        pipeline_id: Optional[int] = None,
+        stage_id: Optional[int] = None,
+        sleep: Any = asyncio.sleep,
+    ) -> Dict[str, Any]:
+        """Convert a lead to a deal via the v2 async endpoint and poll until done.
+
+        POSTs to /api/v2/leads/{lead_id}/convert/deal, then polls
+        /api/v2/leads/{lead_id}/convert/status/{conversion_id} every
+        CONVERT_POLL_INTERVAL_SECONDS until status reaches a terminal value
+        (completed, failed, rejected) or the poll timeout is exceeded.
+
+        Args:
+            lead_id: UUID string of the lead to convert
+            pipeline_id: Optional pipeline ID for the new deal
+            stage_id: Optional stage ID for the new deal
+            sleep: Override for the sleep coroutine (test seam)
+
+        Returns:
+            {"deal_id": int, "conversion_id": str, "status": "completed"}
+
+        Raises:
+            PipedriveAPIError: On non-completed terminal status, conversion timeout,
+                or any underlying API error.
+            ValueError: If lead_id is empty or the API response shape is unexpected.
+        """
+        if not lead_id or not lead_id.strip():
+            raise ValueError("lead_id is required")
+
+        payload: Dict[str, Any] = {}
+        if pipeline_id is not None:
+            payload["pipeline_id"] = pipeline_id
+        if stage_id is not None:
+            payload["stage_id"] = stage_id
+
+        logger.info(f"LeadClient: starting lead-to-deal conversion for lead {lead_id}")
+        start_response = await self.base_client.request(
+            "POST",
+            f"/leads/{lead_id}/convert/deal",
+            json_payload=payload if payload else None,
+            version="v2",
+            validate_success=False,
+        )
+
+        start_data = start_response.get("data") or {}
+        conversion_id = start_data.get("id")
+        if not conversion_id:
+            raise ValueError(
+                f"Pipedrive convert response did not include a conversion id. "
+                f"Got: {json.dumps(start_response)[:500]}"
+            )
+
+        logger.info(
+            f"LeadClient: conversion started, polling status for conversion_id={conversion_id}"
+        )
+
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + CONVERT_POLL_TIMEOUT_SECONDS
+        last_status = "not_started"
+
+        while loop.time() < deadline:
+            status_response = await self.base_client.request(
+                "GET",
+                f"/leads/{lead_id}/convert/status/{conversion_id}",
+                version="v2",
+                validate_success=False,
+            )
+            status_data = status_response.get("data") or {}
+            last_status = status_data.get("status", "not_started")
+
+            if last_status == "completed":
+                deal_id = status_data.get("deal_id")
+                if not deal_id:
+                    raise ValueError(
+                        f"Conversion completed but no deal_id returned. "
+                        f"Response: {json.dumps(status_response)[:500]}"
+                    )
+                logger.info(
+                    f"LeadClient: lead {lead_id} converted to deal {deal_id}"
+                )
+                return {
+                    "deal_id": deal_id,
+                    "conversion_id": conversion_id,
+                    "status": last_status,
+                }
+
+            if last_status in ("failed", "rejected"):
+                error_detail = status_data.get("error") or status_data.get("message") or last_status
+                logger.warning(
+                    f"LeadClient: conversion {conversion_id} ended with status '{last_status}': {error_detail}"
+                )
+                raise PipedriveAPIError(
+                    message=f"Lead-to-deal conversion {last_status}: {error_detail}",
+                    response_data=status_response,
+                )
+
+            await sleep(CONVERT_POLL_INTERVAL_SECONDS)
+
+        raise PipedriveAPIError(
+            message=(
+                f"Lead-to-deal conversion timed out after "
+                f"{CONVERT_POLL_TIMEOUT_SECONDS}s (last status: '{last_status}'). "
+                f"Conversion may still complete on Pipedrive's side; check lead {lead_id}."
+            )
+        )

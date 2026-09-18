@@ -5,15 +5,21 @@ import httpx
 from log_config import logger
 from pipedrive.api.base_client import BaseClient
 from pipedrive.api.features.activities.client.activity_client import ActivityClient
+from pipedrive.api.features.custom_fields.client.custom_field_client import CustomFieldClient
 from pipedrive.api.features.deals.client.deal_client import DealClient
+from pipedrive.api.features.files.client.file_client import FileClient
+from pipedrive.api.features.filters.client.filter_client import FilterClient
 from pipedrive.api.features.item_search.client.item_search_client import (
     ItemSearchClient,
 )
 from pipedrive.api.features.leads.client.lead_client import LeadClient
+from pipedrive.api.features.notes.client.note_client import NoteClient
 from pipedrive.api.features.organizations.client.organization_client import (
     OrganizationClient,
 )
 from pipedrive.api.features.persons.client.person_client import PersonClient
+from pipedrive.api.features.pipelines.client.pipeline_client import PipelineClient
+from pipedrive.api.features.users.client.user_client import UserClient
 
 
 class PipedriveClient:
@@ -42,6 +48,12 @@ class PipedriveClient:
         self.item_search = ItemSearchClient(self.base_client)
         self.lead_client = LeadClient(self.base_client)
         self.activities = ActivityClient(self.base_client)
+        self.notes = NoteClient(self.base_client)
+        self.pipelines = PipelineClient(self.base_client)
+        self.custom_fields = CustomFieldClient(self.base_client)
+        self.users = UserClient(self.base_client)
+        self.files = FileClient(self.base_client)
+        self.filters = FilterClient(self.base_client)
 
         logger.debug("PipedriveClient initialized.")
 

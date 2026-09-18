@@ -1,10 +1,16 @@
 {
   "features": {
     "activities": true,
+    "custom_fields": true,
     "deals": true,
+    "files": true,
+    "filters": true,
     "item_search": true,
     "leads": true,
+    "notes": true,
     "organizations": true,
-    "persons": true
+    "persons": true,
+    "pipelines": true,
+    "users": true
   }
 }

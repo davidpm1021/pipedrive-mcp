@@ -27,6 +27,7 @@ async def update_lead_in_pipedrive(
     visible_to: Optional[str] = None,
     is_archived: Optional[str] = None,
     was_seen: Optional[str] = None,
+    custom_fields: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Updates an existing lead entity within the Pipedrive CRM.
     
@@ -53,14 +54,19 @@ async def update_lead_in_pipedrive(
           "7" = Entire company
         - is_archived: Whether the lead is archived ("true" or "false")
         - was_seen: Whether the lead was seen ("true" or "false")
-    
+        - custom_fields: Dict mapping Pipedrive custom field API keys to values.
+          The keys are the long hash-like strings shown by list_lead_fields_from_pipedrive.
+          For enum/set fields, the value is the option_id (integer). For text/numeric
+          fields, use the raw value.
+
     Example:
         update_lead_in_pipedrive(
             lead_id="adf21080-0e10-11eb-879b-05d71fb426ec",
             title="Updated Client XYZ",
             value="10000",
             visible_to="7",
-            is_archived="false"
+            is_archived="false",
+            custom_fields={"abc123def456...": 7}
         )
     
     Args:
@@ -77,7 +83,8 @@ async def update_lead_in_pipedrive(
         visible_to: Updated visibility setting (1=Owner only, 3=Owner's group, 5=Owner's group & sub-groups, 7=Entire company)
         is_archived: Whether the lead is archived ("true" or "false")
         was_seen: Whether the lead was seen ("true" or "false")
-    
+        custom_fields: Dict of custom field API key -> value (use list_lead_fields_from_pipedrive to discover keys)
+
     Returns:
         JSON string containing success status and updated lead data or error message.
     """
@@ -206,10 +213,11 @@ async def update_lead_in_pipedrive(
     # Check that at least one field is provided for update
     if all(param is None for param in [
         title, value, currency, person_id, organization_id, owner_id,
-        label_ids, expected_close_date, visible_to, is_archived, was_seen
+        label_ids, expected_close_date, visible_to, is_archived, was_seen,
+        custom_fields,
     ]):
         return format_tool_response(
-            False, 
+            False,
             error_message="At least one field must be provided for update. Please specify which lead properties you want to change."
         )
         
@@ -250,6 +258,7 @@ async def update_lead_in_pipedrive(
                 visible_to=visible_to_int,
                 is_archived=is_archived_bool,
                 was_seen=was_seen_bool,
+                custom_fields=custom_fields,
             )
             
             if not updated_lead:

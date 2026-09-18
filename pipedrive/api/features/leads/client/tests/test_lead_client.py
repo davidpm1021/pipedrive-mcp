@@ -324,5 +324,80 @@ class TestLeadClient:
         assert args[0] == "GET"
         assert args[1] == "/leadSources"
         assert kwargs["version"] == "v1"
-        
+
         assert result == mock_response["data"]
+
+    async def test_convert_lead_to_deal_polls_until_completed(
+        self, lead_client, mock_base_client
+    ):
+        """Conversion polls status until completed and returns the new deal_id."""
+        lead_uuid = "123e4567-e89b-12d3-a456-426614174000"
+        conversion_id = "conv-uuid-1"
+
+        # Sequence: POST start, then GET status three times (running, running, completed)
+        mock_base_client.request.side_effect = [
+            {"success": True, "data": {"id": conversion_id}},
+            {"success": True, "data": {"status": "running"}},
+            {"success": True, "data": {"status": "running"}},
+            {"success": True, "data": {"status": "completed", "deal_id": 999}},
+        ]
+        sleep_mock = AsyncMock()
+
+        result = await lead_client.convert_lead_to_deal(
+            lead_id=lead_uuid,
+            pipeline_id=1,
+            stage_id=5,
+            sleep=sleep_mock,
+        )
+
+        assert result == {
+            "deal_id": 999,
+            "conversion_id": conversion_id,
+            "status": "completed",
+        }
+        assert mock_base_client.request.call_count == 4
+
+        start_call = mock_base_client.request.call_args_list[0]
+        assert start_call.args[0] == "POST"
+        assert start_call.args[1] == f"/leads/{lead_uuid}/convert/deal"
+        assert start_call.kwargs["version"] == "v2"
+        assert start_call.kwargs["validate_success"] is False
+        assert start_call.kwargs["json_payload"] == {"pipeline_id": 1, "stage_id": 5}
+
+        for status_call in mock_base_client.request.call_args_list[1:]:
+            assert status_call.args[0] == "GET"
+            assert status_call.args[1] == f"/leads/{lead_uuid}/convert/status/{conversion_id}"
+            assert status_call.kwargs["version"] == "v2"
+            assert status_call.kwargs["validate_success"] is False
+
+        # Slept twice between the three status polls
+        assert sleep_mock.await_count == 2
+
+    async def test_convert_lead_to_deal_failed_status_raises(
+        self, lead_client, mock_base_client
+    ):
+        """A 'failed' or 'rejected' status raises PipedriveAPIError with details."""
+        from pipedrive.api.pipedrive_api_error import PipedriveAPIError
+
+        lead_uuid = "123e4567-e89b-12d3-a456-426614174000"
+
+        mock_base_client.request.side_effect = [
+            {"success": True, "data": {"id": "conv-uuid-2"}},
+            {
+                "success": True,
+                "data": {
+                    "status": "failed",
+                    "error": "Lead has no associated person or organization",
+                },
+            },
+        ]
+        sleep_mock = AsyncMock()
+
+        with pytest.raises(PipedriveAPIError) as exc_info:
+            await lead_client.convert_lead_to_deal(
+                lead_id=lead_uuid, sleep=sleep_mock
+            )
+
+        assert "failed" in str(exc_info.value)
+        assert "Lead has no associated person" in str(exc_info.value)
+        assert sleep_mock.await_count == 0  # Terminal status reached on first poll

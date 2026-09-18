@@ -6,6 +6,7 @@ from pipedrive.api.features.leads.tools.lead_search_tool import search_leads_in_
 from pipedrive.api.features.leads.tools.lead_list_tool import list_leads_from_pipedrive
 from pipedrive.api.features.leads.tools.lead_label_get_tool import get_lead_labels_from_pipedrive
 from pipedrive.api.features.leads.tools.lead_source_get_tool import get_lead_sources_from_pipedrive
+from pipedrive.api.features.leads.tools.lead_convert_tool import convert_lead_to_deal
 
 # Register the feature
 registry.register_feature(
@@ -25,3 +26,4 @@ registry.register_tool("leads", search_leads_in_pipedrive)
 registry.register_tool("leads", list_leads_from_pipedrive)
 registry.register_tool("leads", get_lead_labels_from_pipedrive)
 registry.register_tool("leads", get_lead_sources_from_pipedrive)
+registry.register_tool("leads", convert_lead_to_deal)

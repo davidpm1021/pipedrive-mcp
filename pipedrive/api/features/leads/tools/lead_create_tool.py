@@ -24,13 +24,14 @@ async def create_lead_in_pipedrive(
     label_ids: Optional[str] = None,
     expected_close_date: Optional[str] = None,
     visible_to: Optional[str] = None,
+    custom_fields: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Creates a new lead entity within the Pipedrive CRM.
-    
+
     This tool creates a new lead record with the provided information. A lead represents
     an early-stage sales opportunity in Pipedrive. Each lead must have a title and be linked
     to either a person or an organization (or both).
-    
+
     Format requirements:
         - title: Required lead name/title (cannot be empty)
         - value: Numeric value as a string (will be converted to float)
@@ -42,11 +43,15 @@ async def create_lead_in_pipedrive(
           Note: You can get available label IDs using the get_lead_labels_from_pipedrive tool
         - expected_close_date: Date in ISO format (YYYY-MM-DD)
         - visible_to: Visibility setting as a string, where:
-          "1" = Owner only 
+          "1" = Owner only
           "3" = Owner's visibility group
           "5" = Owner's visibility group and sub-groups
           "7" = Entire company
-    
+        - custom_fields: Dict mapping Pipedrive custom field API keys to values.
+          The keys are the long hash-like strings (e.g., "abc123def456...") shown by
+          list_lead_fields_from_pipedrive. For enum/set fields, the value is the
+          option_id (integer). For text/numeric fields, use the raw value.
+
     Example:
         create_lead_in_pipedrive(
             title="Potential Client ABC",
@@ -54,9 +59,13 @@ async def create_lead_in_pipedrive(
             currency="USD",
             person_id="123",
             label_ids="f08b42a0-4e75-11ea-9643-03698ef1cfd6,f08b42a1-4e75-11ea-9643-03698ef1cfd6",
-            visible_to="3"
+            visible_to="3",
+            custom_fields={
+                "abc123def456...": 42,
+                "789ghi012jkl...": "New Jersey"
+            }
         )
-    
+
     Args:
         ctx: Context object containing the Pipedrive client
         title: The title/name of the lead to create (required)
@@ -68,7 +77,8 @@ async def create_lead_in_pipedrive(
         label_ids: Comma-separated list of lead label UUIDs to apply
         expected_close_date: Expected close date in ISO format (YYYY-MM-DD)
         visible_to: Visibility setting (1=Owner only, 3=Owner's group, 5=Owner's group & sub-groups, 7=Entire company)
-    
+        custom_fields: Dict of custom field API key -> value (use list_lead_fields_from_pipedrive to discover keys)
+
     Returns:
         JSON string containing success status and created lead data or error message.
     """
@@ -214,6 +224,7 @@ async def create_lead_in_pipedrive(
                 label_ids=lead.label_ids,
                 expected_close_date=lead.expected_close_date.isoformat() if lead.expected_close_date else None,
                 visible_to=lead.visible_to,
+                custom_fields=custom_fields,
             )
             
             # Create a Lead model from the response for consistent formatting

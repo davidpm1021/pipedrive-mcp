@@ -60,20 +60,24 @@ class BaseClient:
         query_params: Optional[Dict[str, Any]] = None,
         json_payload: Optional[Dict[str, Any]] = None,
         version: Optional[str] = None,
+        validate_success: bool = True,
     ) -> Dict[str, Any]:
         """
         Make a request to the Pipedrive API with version control
-        
+
         Args:
             method: HTTP method (GET, POST, PATCH, DELETE)
             endpoint: API endpoint (e.g., /persons)
             query_params: URL query parameters
             json_payload: JSON request body
             version: API version to use (v1 or v2), defaults to client's default version
-            
+            validate_success: When True, raise PipedriveAPIError if the response body
+                lacks `success: true`. Set to False for async v2 endpoints (e.g.,
+                /leads/{id}/convert/deal) whose 202 Accepted bodies omit that field.
+
         Returns:
             API response data
-            
+
         Raises:
             PipedriveAPIError: If the API request fails
             ValueError: If an unsupported API version is specified
@@ -121,7 +125,7 @@ class BaseClient:
                 f"Pipedrive API Parsed JSON Response: {json.dumps(response_data, indent=2)}"
             )
 
-            if not response_data.get("success"):
+            if validate_success and not response_data.get("success"):
                 error_message = response_data.get(
                     "error", "Unknown Pipedrive API error"
                 )

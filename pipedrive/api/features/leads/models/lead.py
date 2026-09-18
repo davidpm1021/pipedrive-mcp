@@ -21,6 +21,7 @@ class Lead(BaseModel):
     was_seen: Optional[bool] = False
     channel: Optional[int] = None
     channel_id: Optional[str] = None
+    custom_fields: Optional[Dict[str, Any]] = None  # Pipedrive custom field API key -> value
     
     # Field validators for ID fields
     @field_validator('owner_id', 'person_id', 'organization_id', 'channel')

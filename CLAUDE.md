@@ -16,6 +16,22 @@ IMPORTANT: NEVER add Claude attribution comment blocks like "Generated with Clau
 
 The mcp-concept project is a Model Control Protocol (MCP) server implementation for interacting with the Pipedrive CRM API. It provides a way for Claude to access and manipulate Pipedrive data through tool calls.
 
+## NGPF Fork Context
+
+This repo is a fork of `Wirasm/pipedrive-mcp` (origin: `https://github.com/davidpm1021/pipedrive-mcp`) being adapted for NGPF (Next Gen Personal Finance) so the partnerships team can run their Pipedrive workflow through Claude Desktop.
+
+**Canonical build spec:** `pipedrive-mcp-claude-code-prompt.md` (in the repo root). It defines 7 phases with strict per-phase commit boundaries — read it before touching any feature work. Architectural rationale lives in the linked Notion doc.
+
+### Fork build rules (apply to every phase)
+
+1. **Ask, don't guess.** When the upstream codebase has architectural ambiguity (where a v2 client lives, how new flags register, async polling shape), pause and ask. Pattern-matching to the wrong existing module is the most expensive failure mode.
+2. **Tests are required for new modules.** Each new tool gets at least one happy-path integration test with the Pipedrive API mocked. Bar is "would catch an obvious break," not exhaustive coverage.
+3. **v1 vs v2 awareness.** All upstream modules use Pipedrive v1 API and are synchronous. Phase 2C (lead-to-deal conversion) uses v2 and is asynchronous (202 → poll status URL → completed/failed). Do not pattern-match v2 onto v1 conventions.
+4. **One commit per phase.** Phases are designed to be bisectable. Use the exact commit messages from the build spec. Never bundle phases.
+5. **Feature flag every new module.** Add to `feature_config.py`, default `true`. Lets the team disable a module post-rollout without rolling back the whole release.
+6. **Verify tool count after each phase.** Restart the server, list tools, confirm the delta matches the spec. Absolute counts in the Notion doc are inconsistent — trust the live server output and track deltas.
+7. **Keep the destructive client methods.** Phase 1 removes only the MCP tool registrations for the 6 deletes; the underlying `client/` methods stay so they can be revived later.
+
 ## Environment Setup
 
 1. Create a `.env` file in the root directory with the following environment variables:
